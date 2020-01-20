@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 import argparse
+from scipy.cluster.hierarchy import dendrogram, linkage
+import numpy as np
+from matplotlib import pyplot as plt
 
 
 def parse_arguments(args=None):
@@ -17,15 +20,21 @@ def parse_arguments(args=None):
                                 help='The domains.bed file of the first matrix is required',
                                 required=True)
 
-    parserRequired.add_argument('--domain2', '-d2',
-                                help='The domains.bed file of the second: matrix is required',
-                                required=True)
-
     parserOpt = parser.add_argument_group('Optional arguments')
+
+    parserOpt.add_argument('--domainList', '-l',
+                                help='The domains.bed file of the second: matrix is required',
+                           nargs='+')
 
     parserOpt.add_argument('--value', '-v',
                            help='Determine a value by how much the boundaries of two TADs must at least differ to view them as two separate areas.',
                            type=int, default=0)
+
+    parserOpt.add_argument('--percent', '-p',
+                           help='For the relationship determination, a percentage is required from which area coverage the TADs are related to each other.'
+			   'For example, a relationship should be entered from 5 percent area coverage -p 0.05',
+                           type=float, default=0.5)
+
     return parser
 
 def create_list_of_file(file):
@@ -34,7 +43,7 @@ def create_list_of_file(file):
     splittedList = []
     for line in newList:
         x = line.split("\t")
-        splittedList.append(x[0:3])
+        splittedList.append(x)
     return splittedList
 
 
@@ -67,17 +76,48 @@ def merge_list(d1, d2, pValue):
 def add_id(domainList):
     id_number = 1
     for tad in domainList:
-        tad.append("ID_" + str(id_number))
+        tad[3] = "ID_" + str(id_number)
         id_number += 1
     return domainList
+
+
+def create_relationsship_list(domainList, pPercent):
+    relationList = []
+    tad1, tad2 = 0, 1
+    while (tad1 < len(domainList)):
+        while (tad2 < len(domainList)):
+            if (int(domainList[tad1][2]) < int(domainList[tad2][1])) or (domainList[tad1][0] != domainList[tad2][0]):
+                break
+            halfTad1 = (float(domainList[tad1][2])-float(domainList[tad1][1]))*pPercent
+            halfTad2 = (float(domainList[tad2][2])-float(domainList[tad2][1]))*pPercent
+            # Überprüfung auf Überlappende TAD´s
+            if (((float(domainList[tad1][2])-halfTad1) > float(domainList[tad2][1])) and ((float(domainList[tad1][2])+halfTad1) <= float(domainList[tad2][2]))):
+                if ((float(domainList[tad1][2])-float(domainList[tad1][1])) > (float(domainList[tad2][2])-int(domainList[tad2][1]))):
+                    relationList.append([domainList[tad1][0], domainList[tad1][3], domainList[tad2][3]])
+                else:
+                    relationList.append([domainList[tad2][0], domainList[tad2][3], domainList[tad1][3]])
+            # Überprüfung auf Innenliegende TAD´s
+            elif (((float(domainList[tad1][1])) <= float(domainList[tad2][1])) and (float(domainList[tad1][2]) >= int(domainList[tad2][2]))):
+                relationList.append([domainList[tad1][0], domainList[tad1][3], domainList[tad2][3]])
+            tad2 += 1
+        tad2 = tad1 + 2
+        tad1 += 1
+    return relationList
+
         
 
-def write_in_file(l):
-    filename = "mergedDomains.bed"
+def write_in_file(l, name):
+    filename = name
     myfile = open(filename, 'w')
     i = 0
     while (i < len(l)):
-        myfile.write(l[i][0]+'\t'+l[i][1]+'\t'+l[i][2]+'\t'+l[i][3]+'\n')
+        element = 0
+        string = ""
+        while (element < len(l[i])-1):
+            string += l[i][element] + '\t'
+            element += 1
+        string += l[i][element] + '\n'
+        myfile.write(string)
         i += 1
     myfile.close()
 
@@ -86,12 +126,16 @@ def main(args=None):
 
     args = parse_arguments().parse_args(args)
     pValue = args.value
-    domainList1= create_list_of_file(args.domain1)
-    domainList2 = create_list_of_file(args.domain2)
-    merged_list = merge_list(domainList1, domainList2, pValue)
-    merged_list_with_id = add_id(merged_list)
-    write_in_file(merged_list_with_id)
+    mergedList= create_list_of_file(args.domain1)
+    listOfDomains = []
+    for domain in args.domainList:
+        listOfDomains.append(create_list_of_file(domain))    
+    for domain in listOfDomains:
+        mergedList = merge_list(mergedList, domain, pValue)
+    mergedListWithId = add_id(mergedList)
+    write_in_file(mergedListWithId, "mergedDomains.bed")
+    relationList = create_relationsship_list(mergedListWithId, args.percent)
+    write_in_file(relationList, "relationList.bed")
 
-main()
 
 
