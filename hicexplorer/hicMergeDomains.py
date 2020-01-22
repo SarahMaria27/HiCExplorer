@@ -81,45 +81,70 @@ def add_id(domainList):
     return domainList
 
 
-def create_relationsship_list(domainList, pPercent):
+def create_relationsship_list(domainList, pProzent = 0.5):
     relationList = []
     tad1, tad2 = 0, 1
     while (tad1 < len(domainList)):
         while (tad2 < len(domainList)):
             if (int(domainList[tad1][2]) < int(domainList[tad2][1])) or (domainList[tad1][0] != domainList[tad2][0]):
                 break
-            halfTad1 = (float(domainList[tad1][2])-float(domainList[tad1][1]))*pPercent
-            halfTad2 = (float(domainList[tad2][2])-float(domainList[tad2][1]))*pPercent
+            halfTad1 = (float(domainList[tad1][2])-float(domainList[tad1][1]))*pProzent
+            halfTad2 = (float(domainList[tad2][2])-float(domainList[tad2][1]))*pProzent
             # Überprüfung auf Überlappende TAD´s
             if (((float(domainList[tad1][2])-halfTad1) > float(domainList[tad2][1])) and ((float(domainList[tad1][2])+halfTad1) <= float(domainList[tad2][2]))):
                 if ((float(domainList[tad1][2])-float(domainList[tad1][1])) > (float(domainList[tad2][2])-int(domainList[tad2][1]))):
-                    relationList.append([domainList[tad1][0], domainList[tad1][3], domainList[tad2][3]])
+                    add_relation_to_list(relationList, domainList[tad1][0], domainList[tad1][3], domainList[tad2][3])
                 else:
-                    relationList.append([domainList[tad2][0], domainList[tad2][3], domainList[tad1][3]])
+                    add_relation_to_list(relationList, domainList[tad2][0], domainList[tad2][3], domainList[tad1][3])   
             # Überprüfung auf Innenliegende TAD´s
             elif (((float(domainList[tad1][1])) <= float(domainList[tad2][1])) and (float(domainList[tad1][2]) >= int(domainList[tad2][2]))):
-                relationList.append([domainList[tad1][0], domainList[tad1][3], domainList[tad2][3]])
+                add_relation_to_list(relationList, domainList[tad1][0], domainList[tad1][3], domainList[tad2][3])
             tad2 += 1
         tad2 = tad1 + 2
         tad1 += 1
     return relationList
 
+def add_relation_to_list(rList, chromosom, parent, child):
+    if (len(rList) == 0):
+        rList.append([chromosom, parent, [child]])
+        return rList
+    pos = len(rList)-1
+    while(True):
+        if (rList[pos][1] == parent):
+            rList[pos][2].append(child)
+            return rList
+        elif (int(rList[pos][1][3:]) < int(parent[3:])):
+            rList.append([chromosom, parent, [child]])
+            return rList
+        else:
+            pos -= 1
         
 
-def write_in_file(l, name):
+def write_in_file(l, name, relation = False):
     filename = name
     myfile = open(filename, 'w')
     i = 0
-    while (i < len(l)):
-        element = 0
-        string = ""
-        while (element < len(l[i])-1):
-            string += l[i][element] + '\t'
-            element += 1
-        string += l[i][element] + '\n'
-        myfile.write(string)
-        i += 1
-    myfile.close()
+    if (relation):
+        while (i < len(l)):
+            element = 0
+            while (element < len(l[i][2])):
+                string = l[i][0] + '\t' + l[i][1] + '\t' + l[i][2][element] + '\n'
+                myfile.write(string)
+                element += 1
+
+            i += 1
+        myfile.close()
+    else:
+        while (i < len(l)):
+            element = 0
+            string = ""
+            while (element < len(l[i])-1):
+                string += l[i][element] + '\t'
+                element += 1
+            string += l[i][element] + '\n'
+            myfile.write(string)
+            i += 1
+        myfile.close()
 
 
 def main(args=None):
@@ -135,7 +160,8 @@ def main(args=None):
     mergedListWithId = add_id(mergedList)
     write_in_file(mergedListWithId, "mergedDomains.bed")
     relationList = create_relationsship_list(mergedListWithId, args.percent)
-    write_in_file(relationList, "relationList.bed")
+    write_in_file(relationList, "relationList.bed", True)
+    #print(relationList)
 
 
 
