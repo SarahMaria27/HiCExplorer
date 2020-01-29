@@ -3,6 +3,7 @@ import argparse
 from scipy.cluster.hierarchy import dendrogram, linkage
 import numpy as np
 from matplotlib import pyplot as plt
+from graphviz import Digraph
 
 
 def parse_arguments(args=None):
@@ -16,7 +17,7 @@ def parse_arguments(args=None):
 
     parserRequired = parser.add_argument_group('Required arguments')
 
-    parserRequired.add_argument('--domain1', '-d1',
+    parserRequired.add_argument('--domain1', '-d',
                                 help='The domains.bed file of the first matrix is required',
                                 required=True)
 
@@ -25,6 +26,10 @@ def parse_arguments(args=None):
     parserOpt.add_argument('--domainList', '-l',
                                 help='The domains.bed file of the second: matrix is required',
                            nargs='+')
+
+    parserOpt.add_argument('--ctcfFile', '-c',
+                           help='In order to be able to better assess the relationship between TADs, the associated CTCF file can be included.',
+                           type=int, default=0)
 
     parserOpt.add_argument('--value', '-v',
                            help='Determine a value by how much the boundaries of two TADs must at least differ to view them as two separate areas.',
@@ -47,7 +52,7 @@ def create_list_of_file(file):
     return splittedList
 
 
-def merge_list(d1, d2, pValue):
+def merge_list(d1, d2, pValue= 5000):
     pos1, pos2 = 0, 0
     merged_list = []
     while (pos1 < len(d1) and pos2 < len(d2)):
@@ -55,20 +60,28 @@ def merge_list(d1, d2, pValue):
             if (int(d1[pos1][1]) <= int(d2[pos2][1])):
                 if ((abs(int(d1[pos1][1])-int(d2[pos2][1]))>pValue) or ((abs(int(d1[pos1][2])-int(d2[pos2][2]))>pValue))):
                     merged_list.append(d1[pos1])
-                if (pos1+1 != len(d1)): pos1 += 1
-                else: break
+                if (pos1+1 != len(d1)):
+                    pos1 += 1
+                else: 
+                    while ((pos2 < len(d2)) and (d1[pos1][0] == d2[pos2][0])):
+                        merged_list.append(d2[pos2])
+                        pos2 += 1
+                    break
             elif (int(d1[pos1][1]) > int(d2[pos2][1])):
                 if ((abs(int(d1[pos1][1])-int(d2[pos2][1]))>pValue) or ((abs(int(d1[pos1][2])-int(d2[pos2][2]))>pValue))):
                     merged_list.append(d2[pos2])
-                if (pos2+1 != len(d2)): pos2 += 1
-                else: break
-        if (d1[pos1-1][0] == d2[pos2][0]):
-            while ((pos2 < len(d2)) and (d1[pos1-1][0] == d2[pos2][0])):
-                merged_list.append(d2[pos2])
+                if (pos2+1 != len(d2)):
+                    pos2 += 1         
+                else: 
+                    while ((pos1 < len(d1))and (d1[pos1][0] == d2[pos2][0])):
+                        merged_list.append(d1[pos1])
+                        pos1 += 1
+                    break
+        print("Merged", d1[pos1-1][0])
+        if (pos1 < len(d1) and pos2 < len(d2) and d1[pos1][0] != d2[pos2][0]):
+            if (d1[pos1-1][0] == d2[pos2][0]):
                 pos2 += 1
-        if (d1[pos1][0] == d2[pos2-1][0]):
-            while ((pos1 < len(d1))and (d1[pos1][0] == d2[pos2-1][0])):
-                merged_list.append(d1[pos1])
+            else:
                 pos1 += 1
     return merged_list
             
@@ -131,7 +144,6 @@ def write_in_file(l, name, relation = False):
                 string = l[i][0] + '\t' + l[i][1] + '\t' + l[i][2][element] + '\n'
                 myfile.write(string)
                 element += 1
-
             i += 1
         myfile.close()
     else:
@@ -146,6 +158,62 @@ def write_in_file(l, name, relation = False):
             i += 1
         myfile.close()
 
+def create_tree(rList, dList):
+    name = rList[0][0] + '_relations'
+    g = Digraph(filename=name)
+    sList = create_small_list(dList)
+    chrom = rList[0][0]
+    pos = 0
+    while (pos < len(rList)):
+        if (chrom == rList[pos][0]):
+            g.edge(rList[pos][0], rList[pos][1])
+            for child in rList[pos][2]:
+                g.edge(rList[pos][1], child)
+        else:
+            """for single in sList:
+                if (rList[pos-1][0] == single[0]):
+                    g.edge(single[0], single[1])
+                    sList.remove([single[0], single[1]])"""
+            print("Saved relation tree of " + chrom)
+            g.render()
+            chrom = rList[pos][0]
+            name = chrom + '_relations'
+            g = Digraph(filename=name)
+        pos += 1
+    print("Saved relation tree of " + chrom)
+    g.render()
+    """for single in sList:
+        if (rList[pos-1][0] == single[0]):
+            g.edge(single[0], single[1])
+            sList.remove([single[0], single[1]])"""
+
+def create_small_list(dList):
+    sList = []
+    for tad in dList:
+        sList.append([tad[0], tad[3]])
+    return sList
+
+def read_ctcf(file):
+    with open(file) as f:
+        newList = [line.rstrip() for line in f]
+    splittedList = [[]]
+    actualChr = newList[0].split("\t")[0]
+    for line in newList:
+        x = line.split("\t")
+        if (x[0] == actualChr):
+            splittedList[len(splittedList)-1].append(x[0:3])
+        else:
+            actualChr = x[0]
+            splittedList.append([x[0:3]])
+    return splittedList
+
+def check_boundaries_ctcf(bList, cList):
+    posB = 0
+    while(True):
+        actualChrom = bList[pos[b]][0]
+        posC = 0
+        while (cList[posC][0] != actualChrom):
+            posC += 1
 
 def main(args=None):
 
@@ -161,6 +229,7 @@ def main(args=None):
     write_in_file(mergedListWithId, "mergedDomains.bed")
     relationList = create_relationsship_list(mergedListWithId, args.percent)
     write_in_file(relationList, "relationList.bed", True)
+    create_tree(relationList, mergedListWithId)
     #print(relationList)
 
 
