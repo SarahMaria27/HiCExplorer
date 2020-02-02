@@ -77,7 +77,7 @@ def merge_list(d1, d2, pValue= 5000):
                         merged_list.append(d1[pos1])
                         pos1 += 1
                     break
-        print("Merged", d1[pos1-1][0])
+        # print("Merged", d1[pos1-1][0])
         if (pos1 < len(d1) and pos2 < len(d2) and d1[pos1][0] != d2[pos2][0]):
             if (d1[pos1-1][0] == d2[pos2][0]):
                 pos2 += 1
@@ -163,34 +163,48 @@ def create_tree(rList, dList):
     g = Digraph(filename=name)
     sList = create_small_list(dList)
     chrom = rList[0][0]
-    pos = 0
-    while (pos < len(rList)):
-        if (chrom == rList[pos][0]):
-            g.edge(rList[pos][0], rList[pos][1])
-            for child in rList[pos][2]:
-                g.edge(rList[pos][1], child)
+    posRList = 0
+    posSList = 0
+    while (sList[posSList][0] != chrom):
+        posSList += 1
+    while (posRList < len(rList)):
+        if (chrom == rList[posRList][0]):
+            while (float(sList[posSList][1][0][3:]) < float(rList[posRList][1][3:])):
+                g.node(sList[posSList][1][0])
+                sList[posSList][1].remove(sList[posSList][1][0])
+            if (rList[posRList][1] in sList[posSList][1]):
+                sList[posSList][1].remove(rList[posRList][1])
+            for child in rList[posRList][2]:
+                g.edge(rList[posRList][1], child)
+                if (child in sList[posSList][1]):
+                    sList[posSList][1].remove(child)
         else:
-            """for single in sList:
-                if (rList[pos-1][0] == single[0]):
-                    g.edge(single[0], single[1])
-                    sList.remove([single[0], single[1]])"""
+            while (len(sList[posSList][1])!= 0):
+                g.node(sList[posSList][1][0])
+                sList[posSList][1].remove(sList[posSList][1][0])
             print("Saved relation tree of " + chrom)
             g.render()
-            chrom = rList[pos][0]
+            chrom = rList[posRList][0]
             name = chrom + '_relations'
             g = Digraph(filename=name)
-        pos += 1
+            posSList = 0
+            while (sList[posSList][0] != chrom):
+                posSList += 1
+        posRList += 1
     print("Saved relation tree of " + chrom)
     g.render()
-    """for single in sList:
-        if (rList[pos-1][0] == single[0]):
-            g.edge(single[0], single[1])
-            sList.remove([single[0], single[1]])"""
 
 def create_small_list(dList):
-    sList = []
-    for tad in dList:
-        sList.append([tad[0], tad[3]])
+    sList = [[dList[0][0], []]]
+    chrom = dList[0][0]
+    pos = 0
+    while pos < len(dList):
+        if (dList[pos][0] == chrom):
+            sList[len(sList)-1][1].append(dList[pos][3])
+        else:
+            chrom = dList[pos][0]
+            sList.append([dList[pos][0], [dList[pos][3]]])
+        pos += 1
     return sList
 
 def read_ctcf(file):
