@@ -4,6 +4,7 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 import numpy as np
 from matplotlib import pyplot as plt
 from graphviz import Digraph
+import os
 
 
 def parse_arguments(args=None):
@@ -28,8 +29,7 @@ def parse_arguments(args=None):
                            nargs='+')
 
     parserOpt.add_argument('--ctcfFile', '-c',
-                           help='In order to be able to better assess the relationship between TADs, the associated CTCF file can be included.',
-                           type=int, default=0)
+                           help='In order to be able to better assess the relationship between TADs, the associated CTCF file can be included.')
 
     parserOpt.add_argument('--value', '-v',
                            help='Determine a value by how much the boundaries of two TADs must at least differ to view them as two separate areas.',
@@ -42,15 +42,29 @@ def parse_arguments(args=None):
 
     return parser
 
-def create_list_of_file(file):
+def create_list_of_file(file, binSizeList):
     with open(file) as f:
         newList = [line.rstrip() for line in f]
     splittedList = []
+    binSize = 10000000
+    #just looking at the first 20 positions
+    pos = 0
     for line in newList:
         x = line.split("\t")
         splittedList.append(x)
-    return splittedList
-
+        if (pos < 20):
+            pos += 1
+            zeros, num = 0, x[1]
+            while (num[len(num)-1:] == '0'):
+                zeros += 1
+                num = num[0:(len(num)-1)]
+            num = num[len(num)-1:]
+            while (zeros != 0):
+                num += '0'
+                zeros -= 1
+            if (int(num) < binSize):
+                binSize = int(num)
+    return splittedList, binSize
 
 def merge_list(d1, d2, pValue= 5000):
     pos1, pos2 = 0, 0
@@ -77,7 +91,7 @@ def merge_list(d1, d2, pValue= 5000):
                         merged_list.append(d1[pos1])
                         pos1 += 1
                     break
-        # print("Merged", d1[pos1-1][0])
+        #print("Merged", d1[pos1-1][0])
         if (pos1 < len(d1) and pos2 < len(d2) and d1[pos1][0] != d2[pos2][0]):
             if (d1[pos1-1][0] == d2[pos2][0]):
                 pos2 += 1
@@ -159,7 +173,7 @@ def write_in_file(l, name, relation = False):
         myfile.close()
 
 def create_tree(rList, dList):
-    name = rList[0][0] + '_relations'
+    name = "./trees/" + rList[0][0] + '_relations'
     g = Digraph(filename=name)
     sList = create_small_list(dList)
     chrom = rList[0][0]
@@ -169,7 +183,7 @@ def create_tree(rList, dList):
         posSList += 1
     while (posRList < len(rList)):
         if (chrom == rList[posRList][0]):
-            while (float(sList[posSList][1][0][3:]) < float(rList[posRList][1][3:])):
+            while (int(sList[posSList][1][0][3:]) < int(rList[posRList][1][3:])):
                 g.node(sList[posSList][1][0])
                 sList[posSList][1].remove(sList[posSList][1][0])
             if (rList[posRList][1] in sList[posSList][1]):
@@ -183,9 +197,11 @@ def create_tree(rList, dList):
                 g.node(sList[posSList][1][0])
                 sList[posSList][1].remove(sList[posSList][1][0])
             print("Saved relation tree of " + chrom)
-            g.render()
+            if not os.path.exists("trees"):
+                os.makedirs("trees")
+            g.render(name)
             chrom = rList[posRList][0]
-            name = chrom + '_relations'
+            name = "./trees/" + chrom + '_relations'
             g = Digraph(filename=name)
             posSList = 0
             while (sList[posSList][0] != chrom):
@@ -221,22 +237,82 @@ def read_ctcf(file):
             splittedList.append([x[0:3]])
     return splittedList
 
-def check_boundaries_ctcf(bList, cList):
-    posB = 0
-    while(True):
-        actualChrom = bList[pos[b]][0]
-        posC = 0
-        while (cList[posC][0] != actualChrom):
-            posC += 1
+def merge_ctcf(ctcfList, binSize, minPeek = 1):
+    newCtcfList = []
+    for chromosome in ctcfList:
+        newCtcfList.append([])
+        deletedCtcf = []
+        currentBoundaryLeft = 0
+        currentBoundaryRight = binSize
+        count = 0
+        for peek in chromosome:
+            if (int(peek[1]) <= currentBoundaryRight):
+                count += 1
+            else:
+                if (count >= minPeek):
+                    newCtcfList[len(newCtcfList)-1].append([peek[0], currentBoundaryLeft, currentBoundaryRight, count])
+                #else:
+                    #deletedCtcf.append([peek[0], currentBoundaryLeft, currentBoundaryRight, count])
+                    #print("Bound:", currentBoundaryLeft, "/", currentBoundaryRight,"Chrom", peek[0])
+                currentBoundaryLeft = currentBoundaryRight
+                currentBoundaryRight = currentBoundaryLeft + binSize
+                count = 0
+                if (int(peek[1]) < currentBoundaryRight):
+                    count += 1
+                else:    
+                    while (int(peek[1]) > currentBoundaryLeft):
+                        currentBoundaryLeft += binSize
+                    currentBoundaryRight = currentBoundaryLeft + binSize
+                    count = 1
+    return newCtcfList
+
+
+def compare_boundaries_ctcf(bList, cList):
+    posTad = 0
+    posPeek = 0
+    chromPosition = 0
+    removedTads = []
+    for tad in bList:
+        if (tad[0] != cList[chromPosition][0][0]):
+            chromPosition = 0
+            while (tad[0] != cList[chromPosition][0][0]):
+                chromPosition += 1
+            posPeek = 0
+        else:
+            while (((posPeek+1) < len(cList[chromPosition])) and (int(tad[1]) > int(cList[chromPosition][posPeek][2]))):
+                posPeek += 1
+            if (int(tad[1]) < int(cList[chromPosition][posPeek][1])):
+                #print("removed:", tad[0:3])
+                #print(cList[chromPosition][posPeek-1], cList[chromPosition][posPeek])
+                removedTads.append(tad)
+                bList.remove(tad)
+    print("Removed:", len(removedTads))
+    return bList
+
+
+def all_steps(bList, cList = None):
+    binSize = 0
+    bList, binSize = create_list_of_file(bList, binSize)
+    if cList is not None:
+        cList = merge_ctcf(cList, binSize)
+        bList = compare_boundaries_ctcf(bList, cList)
+    return bList
+
 
 def main(args=None):
 
     args = parse_arguments().parse_args(args)
     pValue = args.value
-    mergedList= create_list_of_file(args.domain1)
     listOfDomains = []
-    for domain in args.domainList:
-        listOfDomains.append(create_list_of_file(domain))    
+    if (args.ctcfFile is not None):
+        ctcfList = read_ctcf(args.ctcfFile)
+        mergedList= all_steps(args.domain1, ctcfList)
+        for domain in args.domainList:
+            listOfDomains.append(all_steps(domain, ctcfList))
+    else:
+        mergedList= all_steps(args.domain1)
+        for domain in args.domainList:
+            listOfDomains.append(all_steps(domain))
     for domain in listOfDomains:
         mergedList = merge_list(mergedList, domain, pValue)
     mergedListWithId = add_id(mergedList)
@@ -244,7 +320,6 @@ def main(args=None):
     relationList = create_relationsship_list(mergedListWithId, args.percent)
     write_in_file(relationList, "relationList.bed", True)
     create_tree(relationList, mergedListWithId)
-    #print(relationList)
 
 
 
