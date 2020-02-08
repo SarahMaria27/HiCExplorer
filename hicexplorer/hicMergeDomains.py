@@ -267,25 +267,29 @@ def merge_ctcf(ctcfList, binSize, minPeek = 1):
     return newCtcfList
 
 
-def compare_boundaries_ctcf(bList, cList):
+def compare_boundaries_ctcf(bList, cList, paraScore = 0.2):
     posTad = 0
     posPeek = 0
     chromPosition = 0
     removedTads = []
-    for tad in bList:
-        if (tad[0] != cList[chromPosition][0][0]):
+    while (posTad < len(bList)):
+        if (bList[posTad][0] != cList[chromPosition][0][0]):
             chromPosition = 0
-            while (tad[0] != cList[chromPosition][0][0]):
+            while (bList[posTad][0] != cList[chromPosition][0][0]):
                 chromPosition += 1
             posPeek = 0
         else:
-            while (((posPeek+1) < len(cList[chromPosition])) and (int(tad[1]) > int(cList[chromPosition][posPeek][2]))):
+            while (((posPeek+1) < len(cList[chromPosition])) and (int(bList[posTad][1]) > int(cList[chromPosition][posPeek][2]))):
                 posPeek += 1
-            if (int(tad[1]) < int(cList[chromPosition][posPeek][1])):
-                #print("removed:", tad[0:3])
-                #print(cList[chromPosition][posPeek-1], cList[chromPosition][posPeek])
-                removedTads.append(tad)
-                bList.remove(tad)
+            if (int(bList[posTad][1]) < int(cList[chromPosition][posPeek][1])):
+                if ((posTad != 0) and (abs(float(bList[posTad-1][4]) - float(bList[posTad][4])) < paraScore)):
+                    if ((posTad != (len(bList)-1)) and (abs(float(bList[posTad+1][4]) - float(bList[posTad][4])) < paraScore)):
+                        #print(bList[posTad-1][4], "/", bList[posTad][4], "/", bList[posTad+1][4])
+                        removedTads.append(bList[posTad])
+                        bList.remove(bList[posTad])
+                        
+        posTad += 1
+    print(removedTads[0:5])
     print("Removed:", len(removedTads))
     return bList
 
